@@ -33,8 +33,36 @@ export const DOWNLOAD_MAP: Record<string, DownloadProduct> = {
     price: 19.9,
     fileKey: "asian-food-workshop.zip",
   },
+
+  // ✅ PRODUK UTAMA (WAJIB ADA)
+  "elegant-business-proposal": {
+    slug: "elegant-business-proposal",
+    title: "Elegant Business Proposal Pack",
+    price: 19.9,
+    fileKey: "elegant-business-proposal-bundle.zip",
+  },
+
+  // ✅ ALIAS (elak error slug dari frontend)
+  "elegant-business-proposal-proposal": {
+    slug: "elegant-business-proposal",
+    title: "Elegant Business Proposal Pack",
+    price: 19.9,
+    fileKey: "elegant-business-proposal-bundle.zip",
+  },
 };
 
 export function getProductBySlug(slug: string) {
-  return DOWNLOAD_MAP[slug] || null;
+  if (!slug) return null;
+
+  // direct match
+  if (DOWNLOAD_MAP[slug]) {
+    return DOWNLOAD_MAP[slug];
+  }
+
+  // fallback normalize (buang -proposal / -bundle berulang)
+  const normalized = slug
+    .replace(/-(proposal|bundle)$/, "")
+    .replace(/-(proposal|bundle)$/, "");
+
+  return DOWNLOAD_MAP[normalized] || null;
 }
