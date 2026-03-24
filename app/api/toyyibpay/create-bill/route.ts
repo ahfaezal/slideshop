@@ -1,6 +1,5 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
-import { saveOrder } from "@/lib/order";
 import { DOWNLOAD_MAP } from "@/lib/download-map";
 
 type CartItem = {
@@ -66,17 +65,14 @@ export async function POST(req: Request) {
         productSlug
       )}&order_id=${encodeURIComponent(orderId)}`;
 
-      saveOrder({
+      console.log("MOCK CREATE BILL:", {
         orderId,
         billCode,
-        slug: productSlug,
-        productTitle: items.length === 1 ? items[0].title : product.title,
+        productSlug,
         amount,
         customerName: name,
         customerEmail: email,
         customerPhone: phone,
-        status: "pending",
-        createdAt: new Date().toISOString(),
       });
 
       return NextResponse.json({
@@ -180,17 +176,14 @@ export async function POST(req: Request) {
     const billCode = result[0].BillCode;
     const paymentUrl = `https://toyyibpay.com/${billCode}`;
 
-    saveOrder({
+    console.log("CREATE BILL SUCCESS:", {
       orderId,
       billCode,
-      slug: productSlug,
-      productTitle: items.length === 1 ? items[0].title : product.title,
+      productSlug,
       amount,
       customerName: name,
       customerEmail: email,
       customerPhone: phone,
-      status: "pending",
-      createdAt: new Date().toISOString(),
     });
 
     return NextResponse.json({
