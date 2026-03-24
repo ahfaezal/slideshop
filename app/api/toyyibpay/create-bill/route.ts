@@ -47,13 +47,7 @@ export async function POST(req: Request) {
     const secretKey = process.env.TOYYIB_SECRET_KEY;
     const categoryCode = process.env.TOYYIB_CATEGORY_CODE;
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-
-    if (!secretKey || !categoryCode) {
-      return NextResponse.json(
-        { error: "Konfigurasi ToyyibPay belum lengkap." },
-        { status: 500 }
-      );
-    }
+    const isMockPayment = process.env.MOCK_PAYMENT === "true";
 
     if (!baseUrl) {
       return NextResponse.json(
@@ -63,6 +57,47 @@ export async function POST(req: Request) {
     }
 
     const amount = product.price;
+    const orderId = crypto.randomUUID();
+    const referenceNo = `slideshop-${Date.now()}`;
+
+    if (isMockPayment) {
+      const billCode = `MOCK_${Date.now()}`;
+      const paymentUrl = `${baseUrl}/checkout/success?mock=1&status=success&product_slug=${encodeURIComponent(
+        productSlug
+      )}&order_id=${encodeURIComponent(orderId)}`;
+
+      saveOrder({
+        orderId,
+        billCode,
+        slug: productSlug,
+        productTitle: items.length === 1 ? items[0].title : product.title,
+        amount,
+        customerName: name,
+        customerEmail: email,
+        customerPhone: phone,
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      });
+
+      return NextResponse.json({
+        ok: true,
+        billCode,
+        paymentUrl,
+        product_slug: productSlug,
+        referenceNo,
+        orderId,
+        amount,
+        mock: true,
+      });
+    }
+
+    if (!secretKey || !categoryCode) {
+      return NextResponse.json(
+        { error: "Konfigurasi ToyyibPay belum lengkap." },
+        { status: 500 }
+      );
+    }
+
     const billAmount = Math.round(amount * 100);
 
     const billName =
@@ -87,9 +122,6 @@ export async function POST(req: Request) {
               : `Pembelian ${product.title}`,
             100
           );
-
-    const orderId = crypto.randomUUID();
-    const referenceNo = `slideshop-${Date.now()}`;
 
     const returnUrl = `${baseUrl}/checkout/success?product_slug=${encodeURIComponent(
       productSlug
@@ -125,7 +157,17 @@ export async function POST(req: Request) {
       }
     );
 
-    const result = await tpRes.json();
+    const rawText = await tpRes.text();
+
+    let result: any = null;
+    try {
+      result = JSON.parse(rawText);
+    } catch {
+      return NextResponse.json(
+        { error: "Respons ToyyibPay tidak sah.", rawText },
+        { status: 500 }
+      );
+    }
 
     if (!tpRes.ok || !Array.isArray(result) || !result[0]?.BillCode) {
       console.error("ToyyibPay createBill error:", result);
