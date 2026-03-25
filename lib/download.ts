@@ -1,100 +1,84 @@
-import crypto from "crypto";
-import { pool } from "@/lib/db";
+import fs from "fs";
+import path from "path";
+import { NextResponse } from "next/server";
+import {
+  getDownloadByToken,
+  isDownloadExpired,
+  incrementDownloadCount,
+} from "@/lib/download";
+import { DOWNLOAD_MAP } from "@/lib/download-map";
 
-export type DownloadTokenRecord = {
-  id: string;
-  order_id: string;
-  token: string;
-  expires_at: string | null;
-  used_count: number;
-  created_at: string;
-};
+const MAX_DOWNLOADS = 3;
 
-export async function createDownloadToken(params: {
-  orderId: string;
-  validHours?: number;
-}) {
-  const token = crypto.randomBytes(24).toString("hex");
-  const validHours = params.validHours ?? 24;
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ token: string }> }
+) {
+  const { token } = await params;
 
-  const result = await pool.query<DownloadTokenRecord>(
-    `
-    insert into download_tokens (
-      order_id,
-      token,
-      expires_at
-    )
-    values (
-      $1,
-      $2,
-      now() + ($3 || ' hours')::interval
-    )
-    returning id, order_id, token, expires_at, used_count, created_at
-    `,
-    [params.orderId, token, String(validHours)]
+  const record = await getDownloadByToken(token);
+
+  if (!record) {
+    return NextResponse.json(
+      { error: "Token download tidak sah." },
+      { status: 404 }
+    );
+  }
+
+  if (record.status !== "paid") {
+    return NextResponse.json(
+      { error: "Pembayaran belum disahkan." },
+      { status: 403 }
+    );
+  }
+
+  if (isDownloadExpired(record.expires_at)) {
+    return NextResponse.json(
+      { error: "Link download telah tamat tempoh." },
+      { status: 410 }
+    );
+  }
+
+  if (record.used_count >= MAX_DOWNLOADS) {
+    return NextResponse.json(
+      { error: "Had muat turun telah dicapai." },
+      { status: 403 }
+    );
+  }
+
+  const product = DOWNLOAD_MAP[record.slug];
+
+  if (!product) {
+    return NextResponse.json(
+      { error: "Produk download tidak ditemui." },
+      { status: 404 }
+    );
+  }
+
+  const filePath = path.join(
+    process.cwd(),
+    "protected-downloads",
+    product.fileKey
   );
 
-  return result.rows[0];
-}
+  if (!fs.existsSync(filePath)) {
+    return NextResponse.json(
+      { error: "Fail tidak ditemui pada server." },
+      { status: 404 }
+    );
+  }
 
-export async function getDownloadByToken(token: string) {
-  const result = await pool.query<
-    DownloadTokenRecord & {
-      slug: string;
-      product_title: string;
-      status: string;
-      customer_email: string;
-    }
-  >(
-    `
-    select
-      dt.id,
-      dt.order_id,
-      dt.token,
-      dt.expires_at,
-      dt.used_count,
-      dt.created_at,
-      o.slug,
-      o.product_title,
-      o.status,
-      o.customer_email
-    from download_tokens dt
-    join orders o
-      on o.order_id = dt.order_id
-    where dt.token = $1
-    limit 1
-    `,
-    [token]
-  );
+  await incrementDownloadCount(token);
 
-  return result.rows[0] || null;
-}
+  const fileBuffer = fs.readFileSync(filePath);
+  const fileName = path.basename(filePath);
 
-export function isDownloadExpired(expiresAt: string | null) {
-  if (!expiresAt) return false;
-  return new Date(expiresAt).getTime() < Date.now();
-}
-
-export async function incrementDownloadCount(token: string) {
-  await pool.query(
-    `
-    update download_tokens
-    set used_count = used_count + 1
-    where token = $1
-    `,
-    [token]
-  );
-}
-
-export async function cleanupExpiredDownloads() {
-  const result = await pool.query<DownloadTokenRecord>(
-    `
-    delete from download_tokens
-    where expires_at is not null
-      and expires_at < now()
-    returning id, order_id, token, expires_at, used_count, created_at
-    `
-  );
-
-  return result.rows;
+  return new NextResponse(fileBuffer, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="${fileName}"`,
+      "Cache-Control": "no-store",
+    },
+  });
 }
