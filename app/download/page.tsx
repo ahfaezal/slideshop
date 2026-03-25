@@ -9,7 +9,7 @@ function DownloadContent() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!token) {
       setMessage("Token download tidak sah.");
       return;
@@ -19,18 +19,29 @@ function DownloadContent() {
       setLoading(true);
       setMessage("");
 
-      const downloadUrl = `/download/${token}`;
+      const res = await fetch(`/api/download?token=${encodeURIComponent(token)}`);
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data?.error || "Gagal memuat turun fail.");
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
 
       const a = document.createElement("a");
-      a.href = downloadUrl;
+      a.href = url;
+      a.download = "slideshop-file.zip";
       a.style.display = "none";
       document.body.appendChild(a);
       a.click();
       a.remove();
 
+      window.URL.revokeObjectURL(url);
+
       setMessage("Muat turun bermula.");
-    } catch (error) {
-      setMessage("Gagal memuat turun fail.");
+    } catch (error: any) {
+      setMessage(error?.message || "Gagal memuat turun fail.");
     } finally {
       setLoading(false);
     }
@@ -49,7 +60,7 @@ function DownloadContent() {
           </h1>
 
           <p className="mt-3 text-sm text-slate-600">
-            Link ini aktif selama 48 jam dan mempunyai had muat turun.
+            Link ini aktif untuk tempoh terhad. Klik butang di bawah untuk mula memuat turun.
           </p>
 
           <button

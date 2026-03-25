@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { DOWNLOAD_MAP } from "@/lib/download-map";
+import { pool } from "@/lib/db";
 
 type CartItem = {
   slug: string;
@@ -55,17 +56,44 @@ export async function POST(req: Request) {
       );
     }
 
-    const amount = product.price;
+    const amount = Number(product.price);
     const orderId = crypto.randomUUID();
-    const referenceNo = `slideshop-${Date.now()}`;
 
+    if (Number.isNaN(amount) || amount <= 0) {
+      return NextResponse.json(
+        { error: "Harga produk tidak sah." },
+        { status: 400 }
+      );
+    }
+
+    // MOCK MODE
     if (isMockPayment) {
       const billCode = `MOCK_${Date.now()}`;
-      const paymentUrl = `${baseUrl}/checkout/success?mock=1&status=success&product_slug=${encodeURIComponent(
-        productSlug
-      )}&order_id=${encodeURIComponent(orderId)}`;
 
-      console.log("MOCK CREATE BILL:", {
+      await pool.query(
+        `
+        insert into orders
+        (
+          order_id,
+          bill_code,
+          slug,
+          product_title,
+          amount,
+          customer_name,
+          customer_email,
+          customer_phone,
+          status
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+        `,
+        [orderId, billCode, productSlug, product.title, amount, name, email, phone]
+      );
+
+      const paymentUrl = `${baseUrl}/payment/success?mock=1&orderId=${encodeURIComponent(
+        orderId
+      )}`;
+
+      console.log("MOCK CREATE BILL SUCCESS:", {
         orderId,
         billCode,
         productSlug,
@@ -77,13 +105,10 @@ export async function POST(req: Request) {
 
       return NextResponse.json({
         ok: true,
+        mock: true,
+        orderId,
         billCode,
         paymentUrl,
-        product_slug: productSlug,
-        referenceNo,
-        orderId,
-        amount,
-        mock: true,
       });
     }
 
@@ -98,10 +123,7 @@ export async function POST(req: Request) {
 
     const billName =
       items.length === 1
-        ? sanitizeText(
-            items[0].title || product.title || "Slideshop Purchase",
-            30
-          )
+        ? sanitizeText(items[0].title || product.title || "Slideshop Purchase", 30)
         : sanitizeText(
             items.length > 1
               ? `Slideshop ${items.length} items`
@@ -119,6 +141,37 @@ export async function POST(req: Request) {
             100
           );
 
+    // Simpan order dahulu dengan reference sementara
+    const tempReference = `REF_${Date.now()}`;
+
+    await pool.query(
+      `
+      insert into orders
+      (
+        order_id,
+        bill_code,
+        slug,
+        product_title,
+        amount,
+        customer_name,
+        customer_email,
+        customer_phone,
+        status
+      )
+      values ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+      `,
+      [
+        orderId,
+        tempReference,
+        productSlug,
+        product.title,
+        amount,
+        name,
+        email,
+        phone,
+      ]
+    );
+
     const returnUrl = `${baseUrl}/checkout/success?product_slug=${encodeURIComponent(
       productSlug
     )}&order_id=${encodeURIComponent(orderId)}`;
@@ -135,23 +188,20 @@ export async function POST(req: Request) {
     formData.append("billAmount", String(billAmount));
     formData.append("billReturnUrl", returnUrl);
     formData.append("billCallbackUrl", callbackUrl);
-    formData.append("billExternalReferenceNo", referenceNo);
+    formData.append("billExternalReferenceNo", orderId);
     formData.append("billTo", name);
     formData.append("billEmail", email);
     formData.append("billPhone", phone || "");
     formData.append("billPaymentChannel", "2");
 
-    const tpRes = await fetch(
-      "https://toyyibpay.com/index.php/api/createBill",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: formData.toString(),
-        cache: "no-store",
-      }
-    );
+    const tpRes = await fetch("https://toyyibpay.com/index.php/api/createBill", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: formData.toString(),
+      cache: "no-store",
+    });
 
     const rawText = await tpRes.text();
 
@@ -159,6 +209,8 @@ export async function POST(req: Request) {
     try {
       result = JSON.parse(rawText);
     } catch {
+      await pool.query(`delete from orders where order_id = $1`, [orderId]);
+
       return NextResponse.json(
         { error: "Respons ToyyibPay tidak sah.", rawText },
         { status: 500 }
@@ -167,6 +219,9 @@ export async function POST(req: Request) {
 
     if (!tpRes.ok || !Array.isArray(result) || !result[0]?.BillCode) {
       console.error("ToyyibPay createBill error:", result);
+
+      await pool.query(`delete from orders where order_id = $1`, [orderId]);
+
       return NextResponse.json(
         { error: "Gagal create bill di ToyyibPay.", detail: result },
         { status: 500 }
@@ -176,6 +231,16 @@ export async function POST(req: Request) {
     const billCode = result[0].BillCode;
     const paymentUrl = `https://toyyibpay.com/${billCode}`;
 
+    // Update bill_code sebenar
+    await pool.query(
+      `
+      update orders
+      set bill_code = $1
+      where order_id = $2
+      `,
+      [billCode, orderId]
+    );
+
     console.log("CREATE BILL SUCCESS:", {
       orderId,
       billCode,
@@ -184,19 +249,21 @@ export async function POST(req: Request) {
       customerName: name,
       customerEmail: email,
       customerPhone: phone,
+      returnUrl,
+      callbackUrl,
     });
 
     return NextResponse.json({
       ok: true,
+      orderId,
       billCode,
       paymentUrl,
       product_slug: productSlug,
-      referenceNo,
-      orderId,
       amount,
     });
   } catch (error) {
     console.error("CREATE BILL ERROR:", error);
+
     return NextResponse.json(
       { error: "Ralat pelayan semasa create bill." },
       { status: 500 }

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOrderByBillCode, updateOrderByBillCode } from "@/lib/order";
-import { getProductBySlug } from "@/lib/download-map";
+import { pool } from "@/lib/db";
 import { createDownloadToken } from "@/lib/download";
 import { sendDownloadEmail } from "@/lib/email";
 
@@ -17,7 +16,6 @@ function pick(payload: Record<string, string>, keys: string[]) {
 export async function POST(req: NextRequest) {
   try {
     const contentType = req.headers.get("content-type") || "";
-
     let payload: Record<string, string> = {};
 
     if (contentType.includes("application/json")) {
@@ -31,6 +29,8 @@ export async function POST(req: NextRequest) {
         Array.from(form.entries()).map(([key, value]) => [key, String(value)])
       );
     }
+
+    console.log("CALLBACK PAYLOAD FULL:", payload);
 
     const billCode = pick(payload, ["billcode", "billCode"]);
     const statusId = pick(payload, ["status_id", "statusId", "status"]);
@@ -52,34 +52,47 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const order = getOrderByBillCode(billCode);
+    const orderRes = await pool.query(
+      `
+      select
+        order_id,
+        bill_code,
+        slug,
+        product_title,
+        amount,
+        customer_name,
+        customer_email,
+        status
+      from orders
+      where bill_code = $1
+      limit 1
+      `,
+      [billCode]
+    );
 
-    if (!order) {
+    if (orderRes.rowCount === 0) {
       return NextResponse.json(
         { ok: false, error: "Order tidak dijumpai." },
         { status: 404 }
       );
     }
 
+    const order = orderRes.rows[0];
+
     if (String(statusId) !== "1") {
-      updateOrderByBillCode(billCode, {
-        status: "failed",
-        transactionId,
-      });
+      await pool.query(
+        `
+        update orders
+        set status = 'failed'
+        where bill_code = $1
+        `,
+        [billCode]
+      );
 
       return NextResponse.json({
         ok: true,
         message: "Pembayaran belum berjaya.",
       });
-    }
-
-    const product = getProductBySlug(order.slug);
-
-    if (!product) {
-      return NextResponse.json(
-        { ok: false, error: "Produk tidak dijumpai dalam download map." },
-        { status: 400 }
-      );
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
@@ -91,15 +104,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (order.emailSent) {
-      return NextResponse.json({
-        ok: true,
-        message: "Callback sudah diproses sebelum ini.",
-        downloadHint: `${baseUrl}/download/[existing-token]`,
-      });
-    }
-
-    const recipientEmail = order.customerEmail || fallbackEmail;
+    const recipientEmail = order.customer_email || fallbackEmail;
 
     if (!recipientEmail) {
       return NextResponse.json(
@@ -108,34 +113,42 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const tokenRecord = createDownloadToken({
-      slug: order.slug,
-      email: recipientEmail,
-      fileKey: product.fileKey,
-      validHours: 24,
+    if (order.status === "paid") {
+      return NextResponse.json({
+        ok: true,
+        message: "Callback sudah diproses sebelum ini.",
+      });
+    }
+
+    await pool.query(
+      `
+      update orders
+      set status = 'paid',
+          paid_at = now()
+      where bill_code = $1
+      `,
+      [billCode]
+    );
+
+    const tokenRecord = await createDownloadToken({
+      orderId: order.order_id,
+      validHours: 48,
     });
 
-    const downloadUrl = `${baseUrl}/download/${tokenRecord.token}`;
+    const downloadUrl = `${baseUrl}/download?token=${tokenRecord.token}`;
 
     await sendDownloadEmail({
       to: recipientEmail,
-      name: order.customerName,
+      name: order.customer_name,
       items: [
         {
-          title: order.productTitle,
-          price: order.amount,
+          title: order.product_title,
+          price: Number(order.amount),
         },
       ],
-      total: order.amount,
+      total: Number(order.amount),
       downloadUrl,
-      orderNo: order.orderId,
-    });
-
-    updateOrderByBillCode(billCode, {
-      status: "paid",
-      paidAt: new Date().toISOString(),
-      emailSent: true,
-      transactionId,
+      orderNo: order.order_id,
     });
 
     console.log("Email download dihantar ke:", recipientEmail);
@@ -148,6 +161,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("CALLBACK ERROR:", error);
+
     return NextResponse.json(
       { ok: false, error: "Gagal proses callback." },
       { status: 500 }
