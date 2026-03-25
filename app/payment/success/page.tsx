@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-export default function PaymentSuccessPage() {
+function PaymentSuccessContent() {
   const searchParams = useSearchParams();
   const orderId = searchParams.get("orderId");
   const mock = searchParams.get("mock");
@@ -93,5 +93,22 @@ export default function PaymentSuccessPage() {
         )}
       </div>
     </main>
+  );
+}
+
+export default function PaymentSuccessPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
+          <div className="w-full max-w-xl rounded-2xl bg-white shadow p-8 text-center">
+            <h1 className="text-3xl font-bold mb-4">Pembayaran Berjaya</h1>
+            <p className="text-slate-700 mb-4">Sedang memuatkan maklumat pembayaran...</p>
+          </div>
+        </main>
+      }
+    >
+      <PaymentSuccessContent />
+    </Suspense>
   );
 }
