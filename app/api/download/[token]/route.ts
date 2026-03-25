@@ -9,7 +9,7 @@ export async function GET(
 ) {
   const { token } = await params;
 
-  const record = getDownloadByToken(token);
+  const record = await getDownloadByToken(token);
 
   if (!record) {
     return NextResponse.json(
