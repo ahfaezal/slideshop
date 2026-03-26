@@ -20,26 +20,18 @@ function DownloadContent() {
       setMessage("");
 
       const res = await fetch(`/api/download?token=${encodeURIComponent(token)}`);
+      const data = await res.json();
 
       if (!res.ok) {
-        const data = await res.json();
         throw new Error(data?.error || "Gagal memuat turun fail.");
       }
 
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
+      if (!data?.url) {
+        throw new Error("Pautan muat turun tidak diterima.");
+      }
 
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "slideshop-file.zip";
-      a.style.display = "none";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-
-      window.URL.revokeObjectURL(url);
-
-      setMessage("Muat turun bermula.");
+      setMessage("Muat turun sedang dimulakan...");
+      window.location.href = data.url;
     } catch (error: any) {
       setMessage(error?.message || "Gagal memuat turun fail.");
     } finally {

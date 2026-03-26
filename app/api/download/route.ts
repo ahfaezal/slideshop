@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import path from "path";
-import fs from "fs/promises";
 import {
   getDownloadByToken,
   incrementDownloadCount,
   isDownloadExpired,
 } from "@/lib/download";
 import { DOWNLOAD_MAP } from "@/lib/download-map";
+import { getPresignedDownloadUrl } from "@/lib/s3";
 
 const MAX_DOWNLOADS = 3;
 
@@ -77,22 +76,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const filePath = path.join(
-      process.cwd(),
-      "protected-downloads",
-      product.fileKey
-    );
+    const fileKey = product.fileKey;
+    const downloadName = fileKey.split("/").pop() || "slideshop-file.zip";
 
-    const fileBuffer = await fs.readFile(filePath);
+    const signedUrl = await getPresignedDownloadUrl(fileKey, downloadName);
 
     await incrementDownloadCount(token);
 
-    return new NextResponse(fileBuffer, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="${product.fileKey}"`,
-      },
+    return NextResponse.json({
+      success: true,
+      url: signedUrl,
     });
   } catch (error) {
     console.error("DOWNLOAD_ERROR:", error);
