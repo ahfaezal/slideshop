@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
     }
 
     const fileKey = product.fileKey;
-    const downloadName = fileKey.split("/").pop() || "slideshop-file.zip";
+    const downloadName = fileKey.split("/").pop() || "slideshop-download";
 
     const signedUrl = await getPresignedDownloadUrl(fileKey, downloadName);
 
