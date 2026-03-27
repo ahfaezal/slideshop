@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import SiteNavbar from "@/app/components/layout/SiteNavbar";
 
@@ -22,6 +22,7 @@ type CheckoutData = {
 
 type FinalizeResponse = {
   ok?: boolean;
+  success?: boolean;
   message?: string;
   downloadUrl?: string;
   error?: string;
@@ -32,7 +33,7 @@ function formatAmount(total?: number) {
   return `RM${total.toFixed(2)}`;
 }
 
-export default function SuccessPage() {
+function SuccessContent() {
   const searchParams = useSearchParams();
 
   const [order, setOrder] = useState<CheckoutData | null>(null);
@@ -46,7 +47,10 @@ export default function SuccessPage() {
   const billCode = searchParams.get("billcode") || "";
   const orderId = searchParams.get("order_id") || "";
   const transactionId = searchParams.get("transaction_id") || "";
-  const isSuccess = statusId === "1" || searchParams.get("status") === "success";
+  const isSuccess =
+    statusId === "1" ||
+    searchParams.get("status") === "success" ||
+    searchParams.get("mock") === "1";
 
   const localStorageKey = "slideshop_checkout";
 
@@ -63,13 +67,15 @@ export default function SuccessPage() {
 
   const fallbackItem = useMemo(() => {
     if (!slug) return null;
+
     return {
       slug,
       title: slug
         .split("-")
         .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
         .join(" "),
-      price: typeof order?.total === "number" ? `RM${order.total.toFixed(2)}` : "-",
+      price:
+        typeof order?.total === "number" ? `RM${order.total.toFixed(2)}` : "-",
     };
   }, [slug, order?.total]);
 
@@ -86,6 +92,12 @@ export default function SuccessPage() {
       if (!slug) {
         setIsFinalizing(false);
         setFinalizeError("Slug produk tidak ditemui pada URL.");
+        return;
+      }
+
+      if (!orderId) {
+        setIsFinalizing(false);
+        setFinalizeError("Order ID tidak ditemui pada URL.");
         return;
       }
 
@@ -349,5 +361,23 @@ export default function SuccessPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+export default function SuccessPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-[#07111f] text-white">
+          <div className="flex min-h-screen items-center justify-center px-6">
+            <div className="rounded-3xl border border-white/10 bg-white/[0.04] px-8 py-6 text-center backdrop-blur-xl">
+              Sedang memuatkan status pembayaran...
+            </div>
+          </div>
+        </main>
+      }
+    >
+      <SuccessContent />
+    </Suspense>
   );
 }
