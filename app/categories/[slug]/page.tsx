@@ -12,7 +12,12 @@ type Props = {
 };
 
 function normalize(text: string) {
-  return text.toLowerCase().replace(/\s+/g, "-").trim();
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/&/g, "and")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
 }
 
 function formatCategoryName(slug: string) {
@@ -28,15 +33,16 @@ export default async function CategoryDetailPage({ params }: Props) {
   const products = (getAllProducts() as Product[]) ?? [];
 
   const filtered = products.filter((product) => {
-    const cat = normalize(product.category || "");
-    return cat.includes(slug);
+    const categorySlug = normalize(product.category || "");
+    return categorySlug === slug;
   });
 
-  if (!filtered.length) {
+  if (filtered.length === 0) {
     notFound();
   }
 
-  const categoryName = formatCategoryName(slug);
+  const categoryName =
+    filtered[0]?.category?.trim() || formatCategoryName(slug);
 
   return (
     <main className="min-h-screen bg-[#07111f] text-white">
