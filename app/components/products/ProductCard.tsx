@@ -5,9 +5,10 @@ export type Product = {
   title: string;
   category?: string;
   price: number;
-  thumbnail?: string;
+  thumbnail?: string | null;
   previews?: string[];
   file?: string;
+  pptx?: string | null;
 };
 
 function formatPrice(price: number) {
@@ -20,11 +21,11 @@ function formatPrice(price: number) {
 
 function getProductImage(product: Product) {
   if (product.thumbnail) {
-    return `/protected-downloads/${product.slug}/${product.thumbnail}`;
+    return product.thumbnail;
   }
 
   if (product.previews && product.previews.length > 0) {
-    return `/protected-downloads/${product.slug}/${product.previews[0]}`;
+    return product.previews[0];
   }
 
   return "https://placehold.co/1200x900/png?text=Slideshop";
@@ -62,6 +63,7 @@ export default function ProductCard({ product }: { product: Product }) {
           <h3 className="line-clamp-2 text-lg font-bold leading-7 text-white">
             {product.title}
           </h3>
+
           <div className="shrink-0 text-right">
             <div className="text-xs uppercase tracking-wide text-slate-400">
               Harga
