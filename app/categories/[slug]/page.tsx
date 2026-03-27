@@ -30,28 +30,15 @@ function formatCategoryName(slug: string) {
 export default async function CategoryDetailPage({ params }: Props) {
   const { slug } = await params;
 
-  const products = (getAllProducts() as Product[]) ?? [];
+  const products = getAllProducts() as Product[];
 
   const filtered = products.filter((product) => {
     const categorySlug = normalize(product.category || "");
     return categorySlug === slug;
   });
 
-  if (filtered.length === 0) {
-    return (
-      <main
-        style={{
-          padding: "40px",
-          color: "white",
-          background: "#07111f",
-          minHeight: "100vh",
-        }}
-      >
-        <h1>Route jumpa, tapi tiada produk</h1>
-        <p>Slug: {slug}</p>
-        <p>Jumlah semua produk: {products.length}</p>
-      </main>
-    );
+  if (!filtered.length) {
+    notFound();
   }
 
   const categoryName =

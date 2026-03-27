@@ -1,5 +1,4 @@
-import fs from "fs";
-import path from "path";
+import productsData from "@/data/products.json";
 
 export type ProductInfo = {
   title?: string;
@@ -10,6 +9,7 @@ export type ProductInfo = {
   thumbnail?: string;
   previews?: string[];
   file?: string;
+  fileKey?: string;
 };
 
 export type ProductCard = {
@@ -20,83 +20,59 @@ export type ProductCard = {
   thumbnail: string | null;
   previews: string[];
   pptx: string | null;
+  description?: string;
 };
 
-const PRODUCTS_DIR = path.join(process.cwd(), "protected-downloads");
-const PREVIEWS_DIR = path.join(process.cwd(), "public", "product-previews");
+function normalizeProduct(item: ProductInfo): ProductCard {
+  const slug = item.slug?.trim() || "";
 
-function safeReadJson(filePath: string): ProductInfo {
-  try {
-    const raw = fs.readFileSync(filePath, "utf8");
-    const cleanRaw = raw.replace(/^\uFEFF/, "").trim();
-    return JSON.parse(cleanRaw);
-  } catch {
-    return {};
-  }
+  return {
+    slug,
+    title: item.title?.trim() || slugToTitle(slug),
+    category: item.category?.trim() || inferCategoryFromSlug(slug),
+    price: Number(item.price ?? 9.9),
+    thumbnail: item.thumbnail?.trim() || null,
+    previews: Array.isArray(item.previews)
+      ? item.previews.filter(Boolean)
+      : [],
+    pptx: item.fileKey?.trim() || item.file?.trim() || null,
+    description: item.description?.trim() || undefined,
+  };
 }
 
 export function getAllProducts(): ProductCard[] {
-  if (!fs.existsSync(PRODUCTS_DIR)) {
+  if (!Array.isArray(productsData)) {
     return [];
   }
 
-  const folders = fs
-    .readdirSync(PRODUCTS_DIR, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory());
-
-  const products = folders.map((folder) => {
-    const folderSlug = folder.name;
-    const productDir = path.join(PRODUCTS_DIR, folderSlug);
-    const previewDir = path.join(PREVIEWS_DIR, folderSlug);
-
-    const productFiles = fs.existsSync(productDir)
-      ? fs.readdirSync(productDir)
-      : [];
-
-    const previewFiles = fs.existsSync(previewDir)
-      ? fs.readdirSync(previewDir)
-      : [];
-
-    const infoPath = path.join(productDir, "info.json");
-    const info: ProductInfo = fs.existsSync(infoPath)
-      ? safeReadJson(infoPath)
-      : {};
-
-    const slug = info.slug || folderSlug;
-
-    const pptx =
-      info.file ||
-      productFiles.find((file) => file.toLowerCase().endsWith(".pptx")) ||
-      null;
-
-    const thumbnail =
-      (typeof info.thumbnail === "string" && info.thumbnail) ||
-      previewFiles.find((file) => file.toLowerCase() === "thumbnail.jpg") ||
-      null;
-
-    const previews =
-      Array.isArray(info.previews) && info.previews.length > 0
-        ? [...info.previews].sort()
-        : previewFiles
-            .filter((file) => /^preview-\d+\.jpg$/i.test(file))
-            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-
-    return {
-      slug,
-      title: info.title || slugToTitle(slug),
-      category: info.category || inferCategoryFromSlug(slug),
-      price: Number(info.price ?? 9.9),
-      thumbnail,
-      previews,
-      pptx,
-    };
-  });
-
-  return products.sort((a, b) => a.title.localeCompare(b.title));
+  return (productsData as ProductInfo[])
+    .map(normalizeProduct)
+    .filter((product) => product.slug)
+    .sort((a, b) => a.title.localeCompare(b.title));
 }
 
 export function getProductsByPrefix(prefix: string): ProductCard[] {
   return getAllProducts().filter((product) => product.slug.startsWith(prefix));
+}
+
+export function getProductBySlug(slug: string): ProductCard | undefined {
+  return getAllProducts().find((product) => product.slug === slug);
+}
+
+export function getProductsByCategory(category: string): ProductCard[] {
+  return getAllProducts().filter(
+    (product) => product.category.toLowerCase() === category.toLowerCase()
+  );
+}
+
+export function getFeaturedProducts(limit = 6): ProductCard[] {
+  return getAllProducts().slice(0, limit);
+}
+
+export function getAllCategories(): string[] {
+  return Array.from(
+    new Set(getAllProducts().map((product) => product.category).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
 }
 
 function slugToTitle(slug: string): string {
