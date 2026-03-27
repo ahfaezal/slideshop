@@ -12,6 +12,14 @@ export const DOWNLOAD_MAP: Record<string, DownloadProduct> = {
     price: 1.99,
     fileKey: "test-slide.pptx",
   },
+
+  // ✅ TAMBAH INI (PENTING)
+  "company-profile-apps": {
+    slug: "company-profile-apps",
+    title: "Company Profile Apps",
+    price: 9.9,
+    fileKey: "company-profile-apps/company-profile-apps.pptx",
+  },
 };
 
 export function getProductBySlug(slug: string) {
