@@ -7,6 +7,7 @@ export type Product = {
   price: number;
   thumbnail?: string;
   previews?: string[];
+  file?: string;
 };
 
 function formatPrice(price: number) {

@@ -9,6 +9,11 @@ import { getAllProducts } from "@/lib/products";
 
 const MAX_DOWNLOADS = 3;
 
+type ProductWithFile = {
+  slug: string;
+  file?: string;
+};
+
 export async function GET(req: NextRequest) {
   try {
     const token = req.nextUrl.searchParams.get("token");
@@ -64,8 +69,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const products = getAllProducts();
-    const product = products.find((p: any) => p.slug === record.slug);
+    const products = getAllProducts() as ProductWithFile[];
+    const product = products.find((p) => p.slug === record.slug);
 
     if (!product) {
       return NextResponse.json(
@@ -77,8 +82,18 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    if (!product.file) {
+      return NextResponse.json(
+        {
+          error:
+            "Fail produk tidak dijumpai. Sila hubungi kami untuk semakan lanjut.",
+        },
+        { status: 404 }
+      );
+    }
+
     const fileKey = `${product.slug}/${product.file}`;
-    const downloadName = product.file || "slideshop-download";
+    const downloadName = product.file;
 
     console.log("DOWNLOAD_DEBUG", {
       slug: record.slug,
