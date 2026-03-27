@@ -1,0 +1,13 @@
+﻿{
+  "title": "Company Profile Future Vision",
+  "slug": "company-profile-future-vision",
+  "category": "Company Profile",
+  "price": 9.9,
+  "file": "company-profile-future-vision.pptx",
+  "thumbnail": "thumbnail.jpg",
+  "previews": [
+    "preview-01.jpg",
+    "preview-02.jpg",
+    "preview-03.jpg"
+  ]
+}

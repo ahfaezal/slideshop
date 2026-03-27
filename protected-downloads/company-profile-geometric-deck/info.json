@@ -1,0 +1,13 @@
+﻿{
+  "title": "Company Profile Geometric Deck",
+  "slug": "company-profile-geometric-deck",
+  "category": "Company Profile",
+  "price": 9.9,
+  "file": "company-profile-geometric-deck.pptx",
+  "thumbnail": "thumbnail.jpg",
+  "previews": [
+    "preview-01.jpg",
+    "preview-02.jpg",
+    "preview-03.jpg"
+  ]
+}
