@@ -1,10 +1,11 @@
+import fs from "fs";
+import path from "path";
 import { NextRequest, NextResponse } from "next/server";
 import {
   getDownloadByToken,
   incrementDownloadCount,
   isDownloadExpired,
 } from "@/lib/download";
-import { DOWNLOAD_MAP } from "@/lib/download-map";
 import { getPresignedDownloadUrl } from "@/lib/s3";
 
 const MAX_DOWNLOADS = 3;
@@ -64,9 +65,55 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const product = DOWNLOAD_MAP[record.slug];
+    const slug = record.slug;
 
-    if (!product) {
+    const infoPath = path.join(
+      process.cwd(),
+      "protected-downloads",
+      slug,
+      "info.json"
+    );
+
+    if (!fs.existsSync(infoPath)) {
+      return NextResponse.json(
+        {
+          error:
+            "Maklumat produk tidak ditemui. Sila hubungi kami untuk semakan lanjut.",
+        },
+        { status: 404 }
+      );
+    }
+
+    let info: {
+      file?: string;
+      title?: string;
+    };
+
+    try {
+      const raw = fs.readFileSync(infoPath, "utf8");
+      info = JSON.parse(raw);
+    } catch (error) {
+      console.error("DOWNLOAD_INFO_PARSE_ERROR:", error);
+
+      return NextResponse.json(
+        {
+          error:
+            "Maklumat produk tidak dapat dibaca. Sila hubungi kami untuk semakan lanjut.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const fileName = info.file || `${slug}.pptx`;
+
+    const localFilePath = path.join(
+      process.cwd(),
+      "protected-downloads",
+      slug,
+      fileName
+    );
+
+    if (!fs.existsSync(localFilePath)) {
       return NextResponse.json(
         {
           error:
@@ -76,8 +123,17 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const fileKey = product.fileKey;
-    const downloadName = fileKey.split("/").pop() || "slideshop-download";
+    const fileKey = `${slug}/${fileName}`;
+    const downloadName = fileName;
+
+    console.log("DOWNLOAD_DEBUG:", {
+      token,
+      slug,
+      infoPath,
+      localFilePath,
+      fileKey,
+      exists: fs.existsSync(localFilePath),
+    });
 
     const signedUrl = await getPresignedDownloadUrl(fileKey, downloadName);
 

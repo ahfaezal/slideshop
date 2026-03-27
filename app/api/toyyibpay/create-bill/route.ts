@@ -1,6 +1,7 @@
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 import { NextResponse } from "next/server";
-import { DOWNLOAD_MAP } from "@/lib/download-map";
 import { pool } from "@/lib/db";
 
 type CartItem = {
@@ -24,8 +25,7 @@ export async function POST(req: Request) {
     const name = String(body?.name || "").trim();
     const email = String(body?.email || "").trim();
     const phone = String(body?.phone || "").trim();
-    const rawProductSlug = String(body?.product_slug || "").trim();
-    const productSlug = rawProductSlug.replace(/-(proposal|bundle)$/, "");
+    const productSlug = String(body?.product_slug || "").trim();
     const items = Array.isArray(body?.items) ? (body.items as CartItem[]) : [];
 
     if (!name || !email || !productSlug) {
@@ -35,12 +35,38 @@ export async function POST(req: Request) {
       );
     }
 
-    const product = DOWNLOAD_MAP[productSlug] || null;
+    const infoPath = path.join(
+      process.cwd(),
+      "protected-downloads",
+      productSlug,
+      "info.json"
+    );
 
-    if (!product) {
+    if (!fs.existsSync(infoPath)) {
       return NextResponse.json(
         { error: "Produk tidak dijumpai." },
         { status: 404 }
+      );
+    }
+
+    let product: {
+      title: string;
+      price: number;
+    };
+
+    try {
+      const raw = fs.readFileSync(infoPath, "utf8");
+      const info = JSON.parse(raw);
+
+      product = {
+        title: String(info?.title || productSlug),
+        price: Number(info?.price || 0),
+      };
+    } catch (error) {
+      console.error("READ PRODUCT INFO ERROR:", error);
+      return NextResponse.json(
+        { error: "Gagal membaca maklumat produk." },
+        { status: 500 }
       );
     }
 
@@ -66,7 +92,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // MOCK MODE
     if (isMockPayment) {
       const billCode = `MOCK_${Date.now()}`;
 
@@ -92,16 +117,6 @@ export async function POST(req: Request) {
       const paymentUrl = `${baseUrl}/payment/success?mock=1&orderId=${encodeURIComponent(
         orderId
       )}`;
-
-      console.log("MOCK CREATE BILL SUCCESS:", {
-        orderId,
-        billCode,
-        productSlug,
-        amount,
-        customerName: name,
-        customerEmail: email,
-        customerPhone: phone,
-      });
 
       return NextResponse.json({
         ok: true,
@@ -141,7 +156,6 @@ export async function POST(req: Request) {
             100
           );
 
-    // Simpan order dahulu dengan reference sementara
     const tempReference = `REF_${Date.now()}`;
 
     await pool.query(
@@ -218,8 +232,6 @@ export async function POST(req: Request) {
     }
 
     if (!tpRes.ok || !Array.isArray(result) || !result[0]?.BillCode) {
-      console.error("ToyyibPay createBill error:", result);
-
       await pool.query(`delete from orders where order_id = $1`, [orderId]);
 
       return NextResponse.json(
@@ -231,7 +243,6 @@ export async function POST(req: Request) {
     const billCode = result[0].BillCode;
     const paymentUrl = `https://toyyibpay.com/${billCode}`;
 
-    // Update bill_code sebenar
     await pool.query(
       `
       update orders
@@ -240,18 +251,6 @@ export async function POST(req: Request) {
       `,
       [billCode, orderId]
     );
-
-    console.log("CREATE BILL SUCCESS:", {
-      orderId,
-      billCode,
-      productSlug,
-      amount,
-      customerName: name,
-      customerEmail: email,
-      customerPhone: phone,
-      returnUrl,
-      callbackUrl,
-    });
 
     return NextResponse.json({
       ok: true,

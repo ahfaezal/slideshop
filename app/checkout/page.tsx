@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { getCart } from "@/lib/cart";
 
 type CartItem = {
@@ -16,16 +17,63 @@ function parsePrice(price: string) {
   return Number.isNaN(value) ? 0 : value;
 }
 
+function formatPrice(price: number) {
+  return `RM ${price.toFixed(2)}`;
+}
+
 export default function CheckoutPage() {
+  const searchParams = useSearchParams();
+  const slugFromUrl = searchParams.get("slug");
+
   const [cart, setCart] = useState<CartItem[]>([]);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingProduct, setIsLoadingProduct] = useState(false);
 
   useEffect(() => {
-    setCart(getCart());
-  }, []);
+    async function loadCheckoutItems() {
+      if (slugFromUrl) {
+        try {
+          setIsLoadingProduct(true);
+
+          localStorage.removeItem("slideshop_cart");
+
+          const res = await fetch(`/api/products/${slugFromUrl}`, {
+            cache: "no-store",
+          });
+          const data = await res.json();
+
+          console.log("PRODUCT FROM API:", data?.product);
+
+          if (res.ok && data?.product) {
+            const product = data.product;
+
+            const singleItem: CartItem = {
+              slug: product.slug,
+              title: product.title,
+              price: formatPrice(Number(product.price) || 0),
+            };
+
+            setCart([singleItem]);
+            return;
+          }
+        } catch (error) {
+          console.error("Load product error:", error);
+        } finally {
+          setIsLoadingProduct(false);
+        }
+
+        setCart([]);
+        return;
+      }
+
+      setCart(getCart());
+    }
+
+    loadCheckoutItems();
+  }, [slugFromUrl]);
 
   const total = useMemo(() => {
     return cart.reduce((sum, item) => sum + parsePrice(item.price), 0);
@@ -43,7 +91,7 @@ export default function CheckoutPage() {
     }
 
     if (cart.length === 0) {
-      alert("Cart anda kosong.");
+      alert("Tiada produk untuk checkout.");
       return;
     }
 
@@ -113,10 +161,10 @@ export default function CheckoutPage() {
           </nav>
 
           <Link
-            href="/cart"
+            href={slugFromUrl ? `/company-profile/${slugFromUrl}` : "/cart"}
             className="rounded-full bg-violet-700 px-5 py-2 text-sm font-semibold text-white hover:bg-violet-800"
           >
-            Kembali ke Cart
+            {slugFromUrl ? "Kembali ke Produk" : "Kembali ke Cart"}
           </Link>
         </div>
       </header>
@@ -188,8 +236,10 @@ export default function CheckoutPage() {
             </h2>
 
             <div className="mt-6 space-y-4">
-              {cart.length === 0 ? (
-                <p className="text-sm text-slate-500">Tiada item dalam cart.</p>
+              {isLoadingProduct ? (
+                <p className="text-sm text-slate-500">Sedang memuatkan produk...</p>
+              ) : cart.length === 0 ? (
+                <p className="text-sm text-slate-500">Tiada item dalam checkout.</p>
               ) : (
                 cart.map((item) => (
                   <div
@@ -219,7 +269,7 @@ export default function CheckoutPage() {
 
             <button
               onClick={handleProceedToPayment}
-              disabled={isSubmitting}
+              disabled={isSubmitting || isLoadingProduct}
               className="mt-6 w-full rounded-2xl bg-violet-700 px-5 py-3 text-sm font-bold text-white transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSubmitting
@@ -228,10 +278,10 @@ export default function CheckoutPage() {
             </button>
 
             <Link
-              href="/cart"
+              href={slugFromUrl ? `/company-profile/${slugFromUrl}` : "/cart"}
               className="mt-3 block w-full rounded-2xl border border-slate-300 px-5 py-3 text-center text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
             >
-              Kembali ke Cart
+              {slugFromUrl ? "Kembali ke Produk" : "Kembali ke Cart"}
             </Link>
           </div>
         </div>
