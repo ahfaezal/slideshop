@@ -22,7 +22,6 @@ export async function sendDownloadEmail({
   downloadUrl: string;
   orderNo: string;
 }) {
-  // fallback kalau tiada items (single product case)
   const safeItems =
     items && items.length > 0
       ? items
@@ -74,10 +73,26 @@ export async function sendDownloadEmail({
     </div>
   `;
 
-  return resend.emails.send({
-    from: process.env.SMTP_FROM || "Slideshop <sales@slideshop.my>",
-    to,
-    subject: `Pembelian berjaya - ${orderNo}`,
-    html,
-  });
+  try {
+    console.log("SEND_DOWNLOAD_EMAIL_START");
+    console.log("TO:", to);
+    console.log("ORDER NO:", orderNo);
+    console.log("DOWNLOAD URL:", downloadUrl);
+    console.log("FROM:", process.env.SMTP_FROM || "Slideshop <sales@slideshop.my>");
+    console.log("RESEND_API_KEY EXISTS:", !!process.env.RESEND_API_KEY);
+
+    const result = await resend.emails.send({
+      from: process.env.SMTP_FROM || "Slideshop <sales@slideshop.my>",
+      to,
+      subject: `Pembelian berjaya - ${orderNo}`,
+      html,
+    });
+
+    console.log("SEND_DOWNLOAD_EMAIL_SUCCESS:", result);
+
+    return result;
+  } catch (error) {
+    console.error("SEND_DOWNLOAD_EMAIL_ERROR:", error);
+    throw error;
+  }
 }

@@ -1,13 +1,12 @@
 import crypto from "crypto";
-import fs from "fs";
-import path from "path";
 import { NextResponse } from "next/server";
 import { pool } from "@/lib/db";
+import { getProductBySlug } from "@/lib/download-map";
 
 type CartItem = {
   slug: string;
   title: string;
-  price: string;
+  price: string | number;
 };
 
 function sanitizeText(input: string, maxLength: number) {
@@ -25,48 +24,27 @@ export async function POST(req: Request) {
     const name = String(body?.name || "").trim();
     const email = String(body?.email || "").trim();
     const phone = String(body?.phone || "").trim();
-    const productSlug = String(body?.product_slug || "").trim();
+
+    // ✅ sistem baru guna "slug"
+    const slug = String(body?.slug || "").trim();
+
+    // optional: masih support items kalau anda mahu kekalkan
     const items = Array.isArray(body?.items) ? (body.items as CartItem[]) : [];
 
-    if (!name || !email || !productSlug) {
+    if (!name || !email || !slug) {
       return NextResponse.json(
         { error: "Maklumat checkout tidak lengkap." },
         { status: 400 }
       );
     }
 
-    const infoPath = path.join(
-      process.cwd(),
-      "protected-downloads",
-      productSlug,
-      "info.json"
-    );
+    // ✅ ambil product dari sistem dynamic
+    const product = getProductBySlug(slug);
 
-    if (!fs.existsSync(infoPath)) {
+    if (!product) {
       return NextResponse.json(
         { error: "Produk tidak dijumpai." },
         { status: 404 }
-      );
-    }
-
-    let product: {
-      title: string;
-      price: number;
-    };
-
-    try {
-      const raw = fs.readFileSync(infoPath, "utf8");
-      const info = JSON.parse(raw);
-
-      product = {
-        title: String(info?.title || productSlug),
-        price: Number(info?.price || 0),
-      };
-    } catch (error) {
-      console.error("READ PRODUCT INFO ERROR:", error);
-      return NextResponse.json(
-        { error: "Gagal membaca maklumat produk." },
-        { status: 500 }
       );
     }
 
@@ -92,6 +70,7 @@ export async function POST(req: Request) {
       );
     }
 
+    // ✅ MOCK PAYMENT
     if (isMockPayment) {
       const billCode = `MOCK_${Date.now()}`;
 
@@ -111,7 +90,7 @@ export async function POST(req: Request) {
         )
         values ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
         `,
-        [orderId, billCode, productSlug, product.title, amount, name, email, phone]
+        [orderId, billCode, product.slug, product.title, amount, name, email, phone]
       );
 
       const paymentUrl = `${baseUrl}/payment/success?mock=1&orderId=${encodeURIComponent(
@@ -156,6 +135,7 @@ export async function POST(req: Request) {
             100
           );
 
+    // simpan order dulu sebagai pending
     const tempReference = `REF_${Date.now()}`;
 
     await pool.query(
@@ -177,7 +157,7 @@ export async function POST(req: Request) {
       [
         orderId,
         tempReference,
-        productSlug,
+        product.slug,
         product.title,
         amount,
         name,
@@ -186,8 +166,9 @@ export async function POST(req: Request) {
       ]
     );
 
-    const returnUrl = `${baseUrl}/checkout/success?product_slug=${encodeURIComponent(
-      productSlug
+    // ✅ sistem baru: guna slug, bukan product_slug
+    const returnUrl = `${baseUrl}/checkout/success?slug=${encodeURIComponent(
+      product.slug
     )}&order_id=${encodeURIComponent(orderId)}`;
 
     const callbackUrl = `${baseUrl}/api/toyyibpay/callback`;
@@ -257,7 +238,7 @@ export async function POST(req: Request) {
       orderId,
       billCode,
       paymentUrl,
-      product_slug: productSlug,
+      slug: product.slug,
       amount,
     });
   } catch (error) {

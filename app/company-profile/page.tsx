@@ -29,7 +29,7 @@ export default function CompanyProfilePage() {
                 key={product.slug}
                 className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md"
               >
-                <Link href={`/company-profile/${product.slug}`} className="block">
+                <Link href={`/product/${product.slug}`} className="block">
                   <div className="aspect-[4/3] bg-gray-100">
                     {thumbnailPath ? (
                       <img
@@ -66,7 +66,7 @@ export default function CompanyProfilePage() {
 
                   <div className="flex gap-2">
                     <Link
-                      href={`/company-profile/${product.slug}`}
+                      href={`/product/${product.slug}`}
                       className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-center text-sm font-medium text-gray-700 transition hover:bg-gray-50"
                     >
                       Lihat

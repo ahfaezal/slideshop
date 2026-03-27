@@ -4,8 +4,8 @@ import {
   incrementDownloadCount,
   isDownloadExpired,
 } from "@/lib/download";
-import { DOWNLOAD_MAP } from "@/lib/download-map";
 import { getPresignedDownloadUrl } from "@/lib/s3";
+import { getAllProducts } from "@/lib/products";
 
 const MAX_DOWNLOADS = 3;
 
@@ -64,7 +64,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const product = DOWNLOAD_MAP[record.slug];
+    const products = getAllProducts();
+    const product = products.find((p: any) => p.slug === record.slug);
 
     if (!product) {
       return NextResponse.json(
@@ -76,8 +77,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const fileKey = product.fileKey;
-    const downloadName = fileKey.split("/").pop() || "slideshop-download";
+    const fileKey = `${product.slug}/${product.file}`;
+    const downloadName = product.file || "slideshop-download";
 
     console.log("DOWNLOAD_DEBUG", {
       slug: record.slug,

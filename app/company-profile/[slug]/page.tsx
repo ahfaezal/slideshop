@@ -1,7 +1,5 @@
-import fs from "fs";
-import path from "path";
-import { notFound } from "next/navigation";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { getProductsByPrefix } from "@/lib/products";
 
 type Props = {
@@ -10,129 +8,141 @@ type Props = {
   }>;
 };
 
-export default async function CompanyProfileDetailPage({ params }: Props) {
+function getPrefixFromCategorySlug(slug: string) {
+  if (slug === "company-profile") return "company-profile-";
+  if (slug === "business-plan") return "business-plan-";
+  if (slug === "pitch-deck") return "pitch-deck-";
+  return null;
+}
+
+function getCategoryTitle(slug: string) {
+  if (slug === "company-profile") return "Company Profile";
+  if (slug === "business-plan") return "Business Plan";
+  if (slug === "pitch-deck") return "Pitch Deck";
+
+  return slug
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getCategoryDescription(slug: string) {
+  if (slug === "company-profile") {
+    return "Koleksi template company profile untuk pembentangan profesional.";
+  }
+
+  if (slug === "business-plan") {
+    return "Koleksi template business plan untuk proposal dan pembentangan strategik.";
+  }
+
+  if (slug === "pitch-deck") {
+    return "Koleksi template pitch deck untuk pembentangan idea, startup dan pelabur.";
+  }
+
+  return "Koleksi template untuk kategori ini.";
+}
+
+export default async function CatalogCategoryPage({ params }: Props) {
   const { slug } = await params;
 
-  const products = getProductsByPrefix("company-profile-");
-  const product = products.find((item) => item.slug === slug);
+  const prefix = getPrefixFromCategorySlug(slug);
 
-  if (!product) {
+  if (!prefix) {
     notFound();
   }
 
-  const infoPath = path.join(
-    process.cwd(),
-    "protected-downloads",
-    product.slug,
-    "info.json"
-  );
-
-  let info: Record<string, any> = {};
-  if (fs.existsSync(infoPath)) {
-    try {
-      info = JSON.parse(fs.readFileSync(infoPath, "utf8"));
-    } catch {
-      info = {};
-    }
-  }
+  const products = getProductsByPrefix(prefix);
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8">
-      <div className="mb-6">
+    <main className="mx-auto max-w-7xl px-4 py-8">
+      <div className="mb-8">
         <Link
-          href="/company-profile"
+          href="/catalog"
           className="text-sm text-gray-500 hover:text-black"
         >
-          ← Kembali ke Company Profile
+          ← Kembali ke Katalog
         </Link>
+
+        <h1 className="mt-4 text-3xl font-bold tracking-tight">
+          {getCategoryTitle(slug)}
+        </h1>
+
+        <p className="mt-2 text-sm text-gray-600">
+          {getCategoryDescription(slug)}
+        </p>
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-2">
-        <div>
-          <div className="mb-4 overflow-hidden rounded-2xl border border-gray-200 bg-white">
-            <img
-              src={`/product-previews/${product.slug}/preview-01.jpg`}
-              alt={product.title}
-              className="w-full object-cover"
-            />
-          </div>
+      {products.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-gray-300 p-10 text-center text-gray-500">
+          Tiada produk dijumpai.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {products.map((product) => {
+            const thumbnailPath = product.thumbnail
+              ? `/product-previews/${product.slug}/${product.thumbnail}`
+              : null;
 
-          <div className="grid grid-cols-3 gap-3">
-            {product.previews.map((preview) => (
-              <div
-                key={preview}
-                className="overflow-hidden rounded-xl border border-gray-200 bg-white"
+            return (
+              <article
+                key={product.slug}
+                className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md"
               >
-                <img
-                  src={`/product-previews/${product.slug}/${preview}`}
-                  alt={preview}
-                  className="w-full object-cover"
-                />
-              </div>
-            ))}
-          </div>
+                <Link href={`/product/${product.slug}`} className="block">
+                  <div className="aspect-[4/3] bg-gray-100">
+                    {thumbnailPath ? (
+                      <img
+                        src={thumbnailPath}
+                        alt={product.title}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-sm text-gray-400">
+                        Tiada thumbnail
+                      </div>
+                    )}
+                  </div>
+                </Link>
+
+                <div className="p-4">
+                  <div className="mb-2">
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                      {product.category}
+                    </p>
+                    <h2 className="mt-1 line-clamp-2 text-base font-semibold text-gray-900">
+                      {product.title}
+                    </h2>
+                  </div>
+
+                  <div className="mb-4 flex items-center justify-between">
+                    <span className="text-lg font-bold text-gray-900">
+                      RM {product.price.toFixed(2)}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {product.previews.length} preview
+                    </span>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Link
+                      href={`/product/${product.slug}`}
+                      className="flex-1 rounded-xl border border-gray-300 px-3 py-2 text-center text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                    >
+                      Lihat
+                    </Link>
+
+                    <Link
+                      href={`/checkout?slug=${product.slug}`}
+                      className="flex-1 rounded-xl bg-black px-3 py-2 text-center text-sm font-medium text-white transition hover:opacity-90"
+                    >
+                      Beli
+                    </Link>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
         </div>
-
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-            {product.category}
-          </p>
-
-          <h1 className="mt-2 text-3xl font-bold text-gray-900">
-            {product.title}
-          </h1>
-
-          <p className="mt-4 text-3xl font-bold text-black">
-            RM {product.price.toFixed(2)}
-          </p>
-
-          <p className="mt-4 text-sm leading-6 text-gray-600">
-            {info.description ||
-              "Template profesional yang sesuai untuk pembentangan syarikat, profil korporat, proposal dan kegunaan persembahan visual yang kemas."}
-          </p>
-
-          <div className="mt-6 flex gap-3">
-            <Link
-              href={`/checkout?slug=${product.slug}`}
-              className="rounded-xl bg-black px-5 py-3 text-sm font-medium text-white hover:opacity-90"
-            >
-              Beli Sekarang
-            </Link>
-
-            <Link
-              href="/company-profile"
-              className="rounded-xl border border-gray-300 px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Lihat Lagi
-            </Link>
-          </div>
-
-          <div className="mt-8 rounded-2xl border border-gray-200 bg-gray-50 p-5">
-            <h2 className="mb-3 text-sm font-semibold text-gray-900">
-              Maklumat Ringkas
-            </h2>
-
-            <div className="space-y-2 text-sm text-gray-700">
-              <div className="flex justify-between gap-4">
-                <span>Slug</span>
-                <span className="font-medium">{product.slug}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span>Kategori</span>
-                <span className="font-medium">{product.category}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span>Jumlah Preview</span>
-                <span className="font-medium">{product.previews.length}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span>Harga</span>
-                <span className="font-medium">RM {product.price.toFixed(2)}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      )}
     </main>
   );
 }

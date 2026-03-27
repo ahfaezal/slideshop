@@ -6,7 +6,11 @@ import { sendDownloadEmail } from "@/lib/email";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const orderId = String(body?.orderId || "").trim();
+
+    const orderId = String(body?.orderId || body?.order_id || "").trim();
+    const slug = String(body?.slug || "").trim();
+    const statusId = String(body?.statusId || body?.status_id || "").trim();
+    const billCode = String(body?.billCode || body?.billcode || "").trim();
 
     if (!orderId) {
       return NextResponse.json(
@@ -41,11 +45,40 @@ export async function POST(req: Request) {
 
     const order = orderRes.rows[0];
 
+    if (slug && order.slug && slug !== order.slug) {
+      return NextResponse.json(
+        { error: "Slug order tidak sepadan." },
+        { status: 400 }
+      );
+    }
+
+    if (statusId && statusId !== "1") {
+      return NextResponse.json(
+        { error: "Status pembayaran tidak berjaya." },
+        { status: 400 }
+      );
+    }
+
+    const baseUrl =
+      process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+
     if (order.status === "paid") {
+      const tokenRecord = await createDownloadToken({
+        orderId,
+        validHours: 24,
+      });
+
+      const downloadUrl = `${baseUrl}/download?token=${tokenRecord.token}`;
+
       return NextResponse.json({
+        ok: true,
         success: true,
         alreadyPaid: true,
-        message: "Order ini sudah diproses.",
+        message: "Order ini sudah diproses. Pautan muat turun baharu dijana.",
+        downloadUrl,
+        orderId: order.order_id,
+        slug: order.slug,
+        billCode,
       });
     }
 
@@ -64,9 +97,6 @@ export async function POST(req: Request) {
       validHours: 24,
     });
 
-    const baseUrl =
-      process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-
     const downloadUrl = `${baseUrl}/download?token=${tokenRecord.token}`;
 
     await sendDownloadEmail({
@@ -84,9 +114,13 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({
+      ok: true,
       success: true,
       message: "Payment finalized dan email telah dihantar.",
       downloadUrl,
+      orderId: order.order_id,
+      slug: order.slug,
+      billCode,
     });
   } catch (error) {
     console.error("FINALIZE_PAYMENT_ERROR", error);

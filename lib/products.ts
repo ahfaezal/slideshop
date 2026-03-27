@@ -5,8 +5,11 @@ export type ProductInfo = {
   title?: string;
   slug?: string;
   category?: string;
-  price?: number;
+  price?: number | string;
   description?: string;
+  thumbnail?: string;
+  previews?: string[];
+  file?: string;
 };
 
 export type ProductCard = {
@@ -22,6 +25,16 @@ export type ProductCard = {
 const PRODUCTS_DIR = path.join(process.cwd(), "protected-downloads");
 const PREVIEWS_DIR = path.join(process.cwd(), "public", "product-previews");
 
+function safeReadJson(filePath: string): ProductInfo {
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    const cleanRaw = raw.replace(/^\uFEFF/, "").trim();
+    return JSON.parse(cleanRaw);
+  } catch {
+    return {};
+  }
+}
+
 export function getAllProducts(): ProductCard[] {
   if (!fs.existsSync(PRODUCTS_DIR)) {
     return [];
@@ -32,9 +45,9 @@ export function getAllProducts(): ProductCard[] {
     .filter((entry) => entry.isDirectory());
 
   const products = folders.map((folder) => {
-    const slug = folder.name;
-    const productDir = path.join(PRODUCTS_DIR, slug);
-    const previewDir = path.join(PREVIEWS_DIR, slug);
+    const folderSlug = folder.name;
+    const productDir = path.join(PRODUCTS_DIR, folderSlug);
+    const previewDir = path.join(PREVIEWS_DIR, folderSlug);
 
     const productFiles = fs.existsSync(productDir)
       ? fs.readdirSync(productDir)
@@ -44,33 +57,35 @@ export function getAllProducts(): ProductCard[] {
       ? fs.readdirSync(previewDir)
       : [];
 
-    const pptx =
-      productFiles.find((file) => file.toLowerCase().endsWith(".pptx")) ?? null;
-
     const infoPath = path.join(productDir, "info.json");
+    const info: ProductInfo = fs.existsSync(infoPath)
+      ? safeReadJson(infoPath)
+      : {};
 
-    let info: ProductInfo = {};
-    if (fs.existsSync(infoPath)) {
-      try {
-        info = JSON.parse(fs.readFileSync(infoPath, "utf8"));
-      } catch {
-        info = {};
-      }
-    }
+    const slug = info.slug || folderSlug;
 
-    const thumbnail =
-      previewFiles.find((file) => file.toLowerCase() === "thumbnail.jpg") ??
+    const pptx =
+      info.file ||
+      productFiles.find((file) => file.toLowerCase().endsWith(".pptx")) ||
       null;
 
-    const previews = previewFiles
-      .filter((file) => /^preview-\d+\.jpg$/i.test(file))
-      .sort();
+    const thumbnail =
+      (typeof info.thumbnail === "string" && info.thumbnail) ||
+      previewFiles.find((file) => file.toLowerCase() === "thumbnail.jpg") ||
+      null;
+
+    const previews =
+      Array.isArray(info.previews) && info.previews.length > 0
+        ? [...info.previews].sort()
+        : previewFiles
+            .filter((file) => /^preview-\d+\.jpg$/i.test(file))
+            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
     return {
       slug,
       title: info.title || slugToTitle(slug),
       category: info.category || inferCategoryFromSlug(slug),
-      price: typeof info.price === "number" ? info.price : 9.9,
+      price: Number(info.price ?? 9.9),
       thumbnail,
       previews,
       pptx,

@@ -1,15 +1,26 @@
 import { NextResponse } from "next/server";
+import { pool } from "@/lib/db";
+
+function sanitizeSlugForReference(slug: string) {
+  return slug
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 30);
+}
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
 
+    const slug = String(body?.slug || "").trim();
+    const orderId = String(body?.orderId || "").trim();
     const name = String(body?.name || "").trim();
     const email = String(body?.email || "").trim();
     const phone = String(body?.phone || "").trim();
     const amount = Number(body?.amount || 0);
 
-    if (!name || !email || amount <= 0) {
+    if (!slug || !orderId || !name || !email || amount <= 0) {
       return NextResponse.json(
         { error: "Maklumat pembayaran tidak lengkap." },
         { status: 400 }
@@ -35,23 +46,77 @@ export async function POST(req: Request) {
       );
     }
 
+    const orderRes = await pool.query(
+      `
+      select
+        order_id,
+        slug,
+        product_title,
+        amount,
+        customer_name,
+        customer_email,
+        customer_phone,
+        status
+      from orders
+      where order_id = $1
+      limit 1
+      `,
+      [orderId]
+    );
+
+    if (orderRes.rowCount === 0) {
+      return NextResponse.json(
+        { error: "Order tidak dijumpai." },
+        { status: 404 }
+      );
+    }
+
+    const order = orderRes.rows[0];
+
+    if (order.slug !== slug) {
+      return NextResponse.json(
+        { error: "Slug order tidak sepadan." },
+        { status: 400 }
+      );
+    }
+
     const billAmount = Math.round(amount * 100).toString();
-    const referenceNo = `ORDER_${Date.now()}`;
+    const safeSlug = sanitizeSlugForReference(slug);
+    const referenceNo = `ORDER_${safeSlug}_${Date.now()}`;
 
     console.log("MOCK PAYMENT:", isMockPayment);
     console.log("SECRET:", !!secretKey);
     console.log("CATEGORY:", categoryCode);
     console.log("BASE URL:", baseUrl);
+    console.log("ORDER ID:", orderId);
+    console.log("SLUG:", slug);
     console.log("NAME:", name);
     console.log("EMAIL:", email);
     console.log("PHONE:", phone);
     console.log("AMOUNT:", amount);
 
     if (isMockPayment) {
+      const mockBillCode = `MOCK_${Date.now()}`;
+
+      await pool.query(
+        `
+        update orders
+        set bill_code = $2
+        where order_id = $1
+        `,
+        [orderId, mockBillCode]
+      );
+
       return NextResponse.json({
         ok: true,
-        billCode: `MOCK_${Date.now()}`,
-        paymentUrl: `${baseUrl}/success?mock=1&status=success`,
+        slug,
+        orderId,
+        billCode: mockBillCode,
+        paymentUrl: `${baseUrl}/success?mock=1&status=success&status_id=1&slug=${encodeURIComponent(
+          slug
+        )}&order_id=${encodeURIComponent(orderId)}&billcode=${encodeURIComponent(
+          mockBillCode
+        )}`,
         referenceNo,
       });
     }
@@ -60,11 +125,13 @@ export async function POST(req: Request) {
       userSecretKey: secretKey,
       categoryCode,
       billName: "Slide Purchase",
-      billDescription: "Pembelian template slide dari slideshop.my",
+      billDescription: `Pembelian template slide: ${slug}`,
       billPriceSetting: "1",
       billPayorInfo: "1",
       billAmount,
-      billReturnUrl: `${baseUrl}/success`,
+      billReturnUrl: `${baseUrl}/success?slug=${encodeURIComponent(
+        slug
+      )}&order_id=${encodeURIComponent(orderId)}`,
       billCallbackUrl: `${baseUrl}/api/toyyibpay/callback`,
       billExternalReferenceNo: referenceNo,
       billTo: name,
@@ -116,10 +183,23 @@ export async function POST(req: Request) {
     console.log("ToyyibPay createBill response:", data);
 
     if (Array.isArray(data) && data[0]?.BillCode) {
+      const billCode = data[0].BillCode as string;
+
+      await pool.query(
+        `
+        update orders
+        set bill_code = $2
+        where order_id = $1
+        `,
+        [orderId, billCode]
+      );
+
       return NextResponse.json({
         ok: true,
-        billCode: data[0].BillCode,
-        paymentUrl: `https://toyyibpay.com/${data[0].BillCode}`,
+        slug,
+        orderId,
+        billCode,
+        paymentUrl: `https://toyyibpay.com/${billCode}`,
         referenceNo,
       });
     }
